@@ -1,0 +1,59 @@
+name: Build Little Militia
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'proyecto.zip'
+      - '.github/workflows/build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Descomprimir proyecto
+        run: |
+          rm -rf game && mkdir game
+          unzip -q -o proyecto.zip -d game
+          if [ ! -f game/settings.gradle.kts ]; then
+            d=$(dirname "$(find game -maxdepth 3 -name settings.gradle.kts | head -1)")
+            cp -r "$d"/. game/
+          fi
+
+      - name: Compilar APK
+        working-directory: game
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: Leer versión
+        id: v
+        run: echo "ver=$(grep -oP 'versionName = "\K[^"]+' game/app/build.gradle.kts)" >> "$GITHUB_OUTPUT"
+
+      - name: Renombrar APK
+        run: cp game/app/build/outputs/apk/debug/app-debug.apk "Little-Militia-v${{ steps.v.outputs.ver }}.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Little-Militia-v${{ steps.v.outputs.ver }}
+          path: Little-Militia-v*.apk
+
+      - name: Publicar en Releases (descarga directa del APK)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.v.outputs.ver }}
+          name: Little Militia v${{ steps.v.outputs.ver }}
+          files: Little-Militia-v${{ steps.v.outputs.ver }}.apk
